@@ -120,4 +120,44 @@ Most files are CC BY or CC BY-SA, which require attribution and share-alike on r
 If you reuse this dataset, carry the per-image attribution with it.
 
 Image files and model weights are not committed to this repository (see `.gitignore`);
-they are regenerable from the scripts, and hosted separately — see the links below.
+they are regenerable from the scripts, and hosted separately.
+
+---
+
+## Links
+
+| | |
+|---|---|
+| Repository | https://github.com/marwantosolve/ArchForge |
+| Dataset | https://huggingface.co/datasets/marwantosolve/archforge-mamluk-cairo |
+| LoRA adapter | https://huggingface.co/marwantosolve/archforge-mamluk-cairo-lora |
+| Evaluation and samples | https://huggingface.co/marwantosolve/archforge-mamluk-cairo-results |
+| Comparison grid | [`reports/comparison_grid.png`](reports/comparison_grid.png) |
+| Evaluation report | [`reports/evaluation.md`](reports/evaluation.md) |
+
+---
+
+## Getting the links
+
+Three commands produce everything above. The dataset publishes from a CPU machine;
+the adapter and the evaluation require the Colab run.
+
+```bash
+# 1. Dataset (any machine, no GPU)
+python scripts/caption_dataset.py --no-vlm
+python scripts/publish_dataset.py --repo-id marwantosolve/archforge-mamluk-cairo --push
+
+# 2. Training and generation — open ARCHFORGE_COLAB.ipynb and run Phase 0 -> 7
+#    Phase 3 regenerates captions with the VLM rather than the template fallback.
+
+# 3. Adapter, grid and evaluation (Colab Phase 8, or locally against a copy of results/)
+python scripts/publish_results.py \
+  --lora-dir models/archforge_lora \
+  --lora-repo marwantosolve/archforge-mamluk-cairo-lora \
+  --results-repo marwantosolve/archforge-mamluk-cairo-results \
+  --dataset-repo marwantosolve/archforge-mamluk-cairo \
+  --push
+```
+
+Both publish scripts need `huggingface-cli login` with a **write** token first.
+Adjust the repo names to your own Hugging Face account.

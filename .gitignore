@@ -21,3 +21,5 @@ results/**/*.webp
 
 .env
 *.token
+
+*.zip

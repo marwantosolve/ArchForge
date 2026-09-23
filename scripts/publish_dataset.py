@@ -30,8 +30,9 @@ A small, curated, licence-documented image dataset of **Mamluk and Islamic Egypt
 architecture**, built for LoRA style adaptation on FLUX.1-dev. {count} images at
 {size}x{size}px, {train} train / {val} validation.
 
-Built as part of [ArchForge](https://github.com/) — a time-boxed proof of concept,
-not a production dataset.
+Built as part of [ArchForge]({repo_url}) — a time-boxed proof of concept,
+not a production dataset. The evaluation, the LoRA adapter and the comparison grid
+are linked from there.
 
 ## Why this dataset exists
 
@@ -131,6 +132,7 @@ def main():
     parser.add_argument("--exclusions", default="data/exclusions.csv")
     parser.add_argument("--out", default="data/hf_dataset_card.md")
     parser.add_argument("--repo-id", default="")
+    parser.add_argument("--repo-url", default="https://github.com/marwantosolve/ArchForge")
     parser.add_argument("--push", action="store_true")
     args = parser.parse_args()
 
@@ -165,6 +167,7 @@ def main():
         train=train,
         val=validation,
         rejected=rejected,
+        repo_url=args.repo_url,
         license_table=license_table,
         attribution_table="\n".join(attribution),
     )
