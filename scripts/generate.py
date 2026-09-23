@@ -5,7 +5,7 @@ import time
 
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from transformers import BitsAndBytesConfig
+from transformers import BitsAndBytesConfig, T5EncoderModel
 
 
 def load_pipeline(model_id, quantize, offload):
@@ -17,11 +17,23 @@ def load_pipeline(model_id, quantize, offload):
             bnb_4bit_compute_dtype=torch.float16,
             bnb_4bit_use_double_quant=True,
         )
+
+    text_encoder_2 = None
+    if quantize:
+        text_encoder_2 = T5EncoderModel.from_pretrained(
+            model_id, subfolder="text_encoder_2", **kwargs
+        )
+
     transformer = FluxTransformer2DModel.from_pretrained(model_id, subfolder="transformer", **kwargs)
+
+    extra = {"transformer": transformer}
+    if text_encoder_2 is not None:
+        extra["text_encoder_2"] = text_encoder_2
+
     pipe = FluxPipeline.from_pretrained(
         model_id,
-        transformer=transformer,
         torch_dtype=torch.float16,
+        **extra,
     )
     if offload:
         pipe.enable_model_cpu_offload()
