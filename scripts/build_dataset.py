@@ -72,6 +72,13 @@ def load_sources(path):
         return list(csv.DictReader(handle))
 
 
+def load_selection(path):
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, newline="", encoding="utf-8") as handle:
+        return [row["pageid"] for row in csv.DictReader(handle)]
+
+
 def load_exclusions(path):
     if not path or not os.path.exists(path):
         return {}
@@ -93,12 +100,14 @@ def main():
     parser.add_argument("--train", default="data/train")
     parser.add_argument("--validation", default="data/validation")
     parser.add_argument("--metadata", default="metadata.csv")
+    parser.add_argument("--selected", default="data/selected.csv")
     parser.add_argument("--exclusions", default="data/exclusions.csv")
     parser.add_argument("--val-fraction", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
     sources = load_sources(os.path.join(args.raw, "sources.csv"))
+    selection = load_selection(args.selected)
     exclusions = load_exclusions(args.exclusions)
     for directory in (args.filtered, args.train, args.validation):
         clear_outputs(directory)
@@ -107,8 +116,12 @@ def main():
     corrupted = 0
     too_small = 0
     excluded = 0
+    not_selected = 0
 
     for row in sources:
+        if selection is not None and row["pageid"] not in selection:
+            not_selected += 1
+            continue
         if row["pageid"] in exclusions:
             excluded += 1
             continue
@@ -214,6 +227,7 @@ def main():
     summary = {
         "input": len(sources),
         "kept": len(unique),
+        "not_selected": not_selected,
         "excluded_manually": excluded,
         "corrupted_or_missing": corrupted,
         "below_resolution_floor": too_small,
@@ -229,8 +243,9 @@ def main():
     with open("data/qc_summary.json", "w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
 
-    print(f"input:                 {summary['input']}")
+    print(f"input candidates:      {summary['input']}")
     print(f"kept:                  {summary['kept']}")
+    print(f"not selected:          {summary['not_selected']}")
     print(f"excluded (manual):     {summary['excluded_manually']}")
     print(f"corrupted/missing:     {summary['corrupted_or_missing']}")
     print(f"below resolution floor:{summary['below_resolution_floor']}")
