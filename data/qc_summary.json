@@ -1,0 +1,20 @@
+{
+  "input": 48,
+  "kept": 40,
+  "excluded_manually": 8,
+  "corrupted_or_missing": 0,
+  "below_resolution_floor": 0,
+  "duplicates_removed": 0,
+  "train": 34,
+  "validation": 6,
+  "target_size": 512,
+  "license_breakdown": {
+    "CC BY 3.0": 4,
+    "CC BY-SA 2.0": 3,
+    "CC BY 2.0": 4,
+    "CC BY-SA 3.0": 17,
+    "CC BY-SA 4.0": 7,
+    "No restrictions": 1,
+    "Public domain": 4
+  }
+}
