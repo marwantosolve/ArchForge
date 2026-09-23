@@ -32,6 +32,22 @@ CATEGORIES = [
     "Category:Al-Azhar Mosque",
     "Category:Ibn Tulun Mosque",
     "Category:Islamic geometric patterns",
+    "Category:Al-Muizz Street",
+    "Category:Bayn al-Qasrayn",
+    "Category:Bab al-Futuh",
+    "Category:Bab al-Nasr",
+    "Category:Qaytbay complex",
+    "Category:Wikala of Qaytbay",
+    "Category:Sabil-Kuttab of Qaytbay",
+    "Category:Mosque of Qanibay al-Rammah",
+    "Category:Funerary complex of Sultan Qalawun",
+    "Category:Mosque of Amir al-Maridani",
+    "Category:Madrasa of Sultan Barquq",
+    "Category:Mosque of Aqsunqur",
+    "Category:Mashhad of Sayyida Ruqayya",
+    "Category:Qasr Bashtak",
+    "Category:Al-Hakim Mosque",
+    "Category:Zawiya of Sidi Abdel Rahman",
 ]
 
 MIN_EDGE = 800
