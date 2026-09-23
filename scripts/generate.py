@@ -39,7 +39,6 @@ def load_pipeline(model_id, quantize, offload):
         pipe.enable_model_cpu_offload()
     else:
         pipe.to("cuda")
-    pipe.set_progress_bar_config(disable=True)
     return pipe
 
 
@@ -65,6 +64,12 @@ def main():
     if args.lora:
         pipe.load_lora_weights(args.lora)
         print(f"[info] loaded LoRA from {args.lora}")
+
+    print(
+        f"[info] generating {len(config['prompts'])} images at {steps} steps, "
+        f"{config['width']}x{config['height']} - the first one takes the longest",
+        flush=True,
+    )
 
     manifest = []
     for index, prompt in enumerate(config["prompts"]):
