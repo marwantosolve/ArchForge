@@ -1,0 +1,15 @@
+{
+  "seed": 0,
+  "num_inference_steps": 20,
+  "guidance_scale": 3.5,
+  "height": 512,
+  "width": 512,
+  "prompts": [
+    "A historic Islamic courtyard in Cairo, architectural photography",
+    "A Mamluk stone facade in historic Cairo",
+    "An Islamic interior with traditional architectural ornamentation",
+    "A historic Egyptian doorway",
+    "A traditional Cairo architectural street scene",
+    "A domed structure in historic Islamic Cairo"
+  ]
+}
