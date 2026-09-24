@@ -19,6 +19,10 @@ def heartbeat(stop_event, index, total):
         )
 
 
+def log(message):
+    print(f"[info] {message}", flush=True)
+
+
 def load_pipeline(model_id, quantize, offload):
     kwargs = {"torch_dtype": torch.float16}
     if quantize:
@@ -31,25 +35,35 @@ def load_pipeline(model_id, quantize, offload):
 
     text_encoder_2 = None
     if quantize:
+        log("loading T5-XXL at 4-bit, ~2 min ...")
         text_encoder_2 = T5EncoderModel.from_pretrained(
             model_id, subfolder="text_encoder_2", **kwargs
         )
 
+    log("loading the transformer at 4-bit, ~2 min ...")
     transformer = FluxTransformer2DModel.from_pretrained(model_id, subfolder="transformer", **kwargs)
 
     extra = {"transformer": transformer}
     if text_encoder_2 is not None:
         extra["text_encoder_2"] = text_encoder_2
 
+    log("assembling the pipeline ...")
     pipe = FluxPipeline.from_pretrained(
         model_id,
         torch_dtype=torch.float16,
         **extra,
     )
+
+    # This is the last silent step and the one that keeps getting interrupted: it moves
+    # every weight to host RAM so they can be swapped to the GPU per module.
     if offload:
+        log("placing weights on CPU for offload - up to a minute, prints nothing ...")
         pipe.enable_model_cpu_offload()
+        log("offload in place")
     else:
+        log("moving every weight onto the GPU - no offload ...")
         pipe.to("cuda")
+        log("weights resident on GPU")
     return pipe
 
 
