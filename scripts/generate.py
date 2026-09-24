@@ -1,11 +1,22 @@
 import argparse
 import json
 import os
+import threading
 import time
 
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
 from transformers import BitsAndBytesConfig, T5EncoderModel
+
+
+def heartbeat(stop_event, index, total):
+    start = time.time()
+    while not stop_event.wait(20):
+        print(
+            f"[{index}/{total}] {time.time() - start:.0f}s elapsed - still working, "
+            f"do not interrupt",
+            flush=True,
+        )
 
 
 def load_pipeline(model_id, quantize, offload):
@@ -67,7 +78,12 @@ def main():
 
     print(
         f"[info] generating {len(config['prompts'])} images at {steps} steps, "
-        f"{config['width']}x{config['height']} - the first one takes the longest",
+        f"{config['width']}x{config['height']}",
+        flush=True,
+    )
+    print(
+        "[info] the first image takes 2-3 min on a T4 - T5 encode plus CPU-offload setup. "
+        "The rest are faster. A line prints every 20s while it works. DO NOT interrupt.",
         flush=True,
     )
 
@@ -75,14 +91,23 @@ def main():
     for index, prompt in enumerate(config["prompts"]):
         generator = torch.Generator(device="cpu").manual_seed(config["seed"] + index)
         start = time.time()
-        image = pipe(
-            prompt=prompt,
-            num_inference_steps=steps,
-            guidance_scale=config["guidance_scale"],
-            height=config["height"],
-            width=config["width"],
-            generator=generator,
-        ).images[0]
+        stop_heartbeat = threading.Event()
+        threading.Thread(
+            target=heartbeat,
+            args=(stop_heartbeat, index + 1, len(config["prompts"])),
+            daemon=True,
+        ).start()
+        try:
+            image = pipe(
+                prompt=prompt,
+                num_inference_steps=steps,
+                guidance_scale=config["guidance_scale"],
+                height=config["height"],
+                width=config["width"],
+                generator=generator,
+            ).images[0]
+        finally:
+            stop_heartbeat.set()
         elapsed = time.time() - start
         name = f"{index:02d}_{args.tag}.png"
         path = os.path.join(args.out, name)
