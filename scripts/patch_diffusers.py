@@ -18,10 +18,17 @@ QUANT_DIR = "examples/research_projects/flux_lora_quantization"
 TARGETS = [f"{QUANT_DIR}/compute_embeddings.py", f"{QUANT_DIR}/train_dreambooth_lora_flux_miniature.py"]
 EMBEDDINGS = f"{QUANT_DIR}/compute_embeddings.py"
 
-# Newer pandas broadcasts a Series.apply that returns equal-length lists into a 2-D
-# array inside map_array, which cannot be assigned back to one column. Every embedding
-# flattens to the same length, so this always trips. Build the object Series explicitly
-# instead of relying on apply's conversion semantics.
+# The T5 embeddings come back as bfloat16 - that is the dtype FLUX stores its text
+# encoder in, and nothing overrides it here. numpy has no bfloat16 dtype, so .numpy()
+# raises "Got unsupported ScalarType BFloat16" and the run dies on the serialization
+# line, after the expensive encoding pass has already finished and printed its results.
+# Cast to float32 on the way out; the values are bf16 to begin with, so nothing is lost.
+#
+# The explicit pd.Series is belt and braces: newer pandas broadcasts an apply returning
+# equal-length lists into a 2-D array, which cannot be assigned back to one column.
+CAST = "(x.cpu().to(torch.float32).numpy() if x.is_floating_point() else x.cpu().numpy())"
+RAW_CAST = "x.cpu().numpy()"
+
 APPLY_TENSORS = re.compile(
     r"^(\s*)df\[col\] = df\[col\]\.apply\(lambda x: x\.cpu\(\)\.numpy\(\)\.flatten\(\)\.tolist\(\)\)$",
     re.M,
@@ -88,18 +95,21 @@ def patch_8bit(path):
     print(f"[ok] 8-bit: rewrote load_in_8bit in {name}")
 
 
-def patch_pandas(path):
+def patch_embeddings(path):
     name = os.path.basename(path)
     source = read(path)
-    if "dtype=object," in source and "for x in df[col]" in source:
-        print(f"[skip] pandas conversion already explicit: {name}")
+    if CAST in source:
+        print(f"[skip] embeddings already cast out of bfloat16: {name}")
         return
-    if not APPLY_TENSORS.search(source):
-        print(f"[warn] the Series.apply tensor conversion was not found in {name}")
+    if APPLY_TENSORS.search(source):
+        source = APPLY_TENSORS.sub(_object_series, source)
+        print(f"[ok] pandas: made the embedding conversion explicit in {name}")
+    if RAW_CAST not in source:
+        print(f"[warn] the tensor-to-numpy conversion was not found in {name}")
         return
-    source = APPLY_TENSORS.sub(_object_series, source)
+    source = source.replace(RAW_CAST, CAST)
     write(path, source)
-    print(f"[ok] pandas: made the embedding conversion explicit in {name}")
+    print(f"[ok] dtype: embeddings are cast to float32 before numpy in {name}")
 
 
 def main():
@@ -126,7 +136,7 @@ def main():
     embeddings = os.path.join(args.repo, EMBEDDINGS)
     if os.path.exists(embeddings):
         patch_8bit(embeddings)
-        patch_pandas(embeddings)
+        patch_embeddings(embeddings)
 
     print("[done] set ARCHFORGE_DATASET to your dataset path before running")
     return 0
