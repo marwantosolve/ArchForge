@@ -18,6 +18,26 @@ QUANT_DIR = "examples/research_projects/flux_lora_quantization"
 TARGETS = [f"{QUANT_DIR}/compute_embeddings.py", f"{QUANT_DIR}/train_dreambooth_lora_flux_miniature.py"]
 EMBEDDINGS = f"{QUANT_DIR}/compute_embeddings.py"
 
+# Newer pandas broadcasts a Series.apply that returns equal-length lists into a 2-D
+# array inside map_array, which cannot be assigned back to one column. Every embedding
+# flattens to the same length, so this always trips. Build the object Series explicitly
+# instead of relying on apply's conversion semantics.
+APPLY_TENSORS = re.compile(
+    r"^(\s*)df\[col\] = df\[col\]\.apply\(lambda x: x\.cpu\(\)\.numpy\(\)\.flatten\(\)\.tolist\(\)\)$",
+    re.M,
+)
+
+
+def _object_series(match):
+    indent = match.group(1)
+    return (
+        f"{indent}df[col] = pd.Series(\n"
+        f"{indent}    [x.cpu().numpy().flatten().tolist() for x in df[col]],\n"
+        f"{indent}    index=df.index,\n"
+        f"{indent}    dtype=object,\n"
+        f"{indent})"
+    )
+
 
 def read(path):
     with open(path, encoding="utf-8") as handle:
@@ -68,6 +88,20 @@ def patch_8bit(path):
     print(f"[ok] 8-bit: rewrote load_in_8bit in {name}")
 
 
+def patch_pandas(path):
+    name = os.path.basename(path)
+    source = read(path)
+    if "dtype=object," in source and "for x in df[col]" in source:
+        print(f"[skip] pandas conversion already explicit: {name}")
+        return
+    if not APPLY_TENSORS.search(source):
+        print(f"[warn] the Series.apply tensor conversion was not found in {name}")
+        return
+    source = APPLY_TENSORS.sub(_object_series, source)
+    write(path, source)
+    print(f"[ok] pandas: made the embedding conversion explicit in {name}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", required=True, help="path to a diffusers checkout")
@@ -92,6 +126,7 @@ def main():
     embeddings = os.path.join(args.repo, EMBEDDINGS)
     if os.path.exists(embeddings):
         patch_8bit(embeddings)
+        patch_pandas(embeddings)
 
     print("[done] set ARCHFORGE_DATASET to your dataset path before running")
     return 0
