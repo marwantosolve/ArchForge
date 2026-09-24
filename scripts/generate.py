@@ -54,8 +54,11 @@ def load_pipeline(model_id, quantize, offload):
         **extra,
     )
 
-    # This is the last silent step and the one that keeps getting interrupted: it moves
-    # every weight to host RAM so they can be swapped to the GPU per module.
+    # Offload is off by default. It exists to fit weights that are too big for VRAM,
+    # but the 4-bit stack is ~9.5GB of a 15GB T4 - so all it does here is park those
+    # weights in host RAM, which is the binding constraint on Colab free tier. It is
+    # also the step that hangs: enable_model_cpu_offload() re-registers every module of
+    # a bitsandbytes-quantized pipeline as an offload hook and can sit there silently.
     if offload:
         log("placing weights on CPU for offload - up to a minute, prints nothing ...")
         pipe.enable_model_cpu_offload()
@@ -75,7 +78,12 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--tag", default="base")
     parser.add_argument("--no-quantize", action="store_true")
-    parser.add_argument("--no-offload", action="store_true")
+    parser.add_argument(
+        "--offload",
+        action="store_true",
+        help="park weights in host RAM between steps. Only for a card too small to hold "
+        "them; on a T4 it raises host RAM use - the binding limit on Colab free tier.",
+    )
     parser.add_argument("--steps", type=int, default=0)
     args = parser.parse_args()
 
@@ -85,7 +93,7 @@ def main():
     steps = args.steps or config["num_inference_steps"]
     os.makedirs(args.out, exist_ok=True)
 
-    pipe = load_pipeline(args.model, not args.no_quantize, not args.no_offload)
+    pipe = load_pipeline(args.model, not args.no_quantize, args.offload)
     if args.lora:
         pipe.load_lora_weights(args.lora)
         print(f"[info] loaded LoRA from {args.lora}")
