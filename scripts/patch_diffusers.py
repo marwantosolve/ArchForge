@@ -6,10 +6,66 @@ import sys
 HARDCODED = re.compile(r"""["']Norod78/Yarn-art-style["']""")
 REPLACEMENT = 'os.environ.get("ARCHFORGE_DATASET", "Norod78/Yarn-art-style")'
 
-TARGETS = [
-    "examples/research_projects/flux_lora_quantization/compute_embeddings.py",
-    "examples/research_projects/flux_lora_quantization/train_dreambooth_lora_flux_miniature.py",
-]
+# transformers 5 removed load_in_8bit as a from_pretrained kwarg - it has to go through
+# a BitsAndBytesConfig now, or T5EncoderModel.__init__ rejects it. Upstream still uses
+# the old form, so without this the embeddings step dies before it starts.
+LOAD_IN_8BIT = re.compile(r"load_in_8bit=True")
+QUANTIZED = "quantization_config=BitsAndBytesConfig(load_in_8bit=True)"
+T5_IMPORT = "from transformers import T5EncoderModel"
+T5_IMPORT_BNB = "from transformers import BitsAndBytesConfig, T5EncoderModel"
+
+QUANT_DIR = "examples/research_projects/flux_lora_quantization"
+TARGETS = [f"{QUANT_DIR}/compute_embeddings.py", f"{QUANT_DIR}/train_dreambooth_lora_flux_miniature.py"]
+EMBEDDINGS = f"{QUANT_DIR}/compute_embeddings.py"
+
+
+def read(path):
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def write(path, source):
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(source)
+
+
+def patch_dataset(path):
+    name = os.path.basename(path)
+    source = read(path)
+    if REPLACEMENT in source:
+        print(f"[skip] dataset already redirected: {name}")
+        return "already"
+    count = len(HARDCODED.findall(source))
+    if not count:
+        print(f"[warn] hardcoded dataset string not found in {name}")
+        if "Norod78" in source:
+            print("[warn]   'Norod78' is present but not in the expected form - patch by hand")
+        return "miss"
+    source = HARDCODED.sub(REPLACEMENT, source)
+    if not re.search(r"^import os$", source, re.M):
+        source = "import os\n" + source
+    write(path, source)
+    print(f"[ok] dataset: redirected {count} occurrence(s) in {name}")
+    return "patched"
+
+
+def patch_8bit(path):
+    name = os.path.basename(path)
+    source = read(path)
+    if QUANTIZED in source:
+        print(f"[skip] 8-bit already rewritten: {name}")
+        return
+    if not LOAD_IN_8BIT.search(source):
+        print(f"[warn] load_in_8bit=True not found in {name} - check whether upstream fixed it")
+        return
+    source = LOAD_IN_8BIT.sub(QUANTIZED, source)
+    if T5_IMPORT in source and T5_IMPORT_BNB not in source:
+        source = source.replace(T5_IMPORT, T5_IMPORT_BNB, 1)
+    if "BitsAndBytesConfig" not in source:
+        print(f"[error] could not add the BitsAndBytesConfig import to {name}", file=sys.stderr)
+        return
+    write(path, source)
+    print(f"[ok] 8-bit: rewrote load_in_8bit in {name}")
 
 
 def main():
@@ -17,38 +73,26 @@ def main():
     parser.add_argument("--repo", required=True, help="path to a diffusers checkout")
     args = parser.parse_args()
 
-    patched = 0
-    already = 0
+    seen = 0
+    misses = 0
     for relative in TARGETS:
         path = os.path.join(args.repo, relative)
         if not os.path.exists(path):
             print(f"[skip] not found: {relative}")
             continue
-        with open(path, encoding="utf-8") as handle:
-            source = handle.read()
-        if REPLACEMENT in source:
-            print(f"[skip] already patched: {relative}")
-            already += 1
-            continue
-        count = len(HARDCODED.findall(source))
-        if not count:
-            print(f"[warn] hardcoded dataset string not found in {relative}")
-            if "Norod78" in source:
-                print("[warn]   'Norod78' is present but not in the expected form - patch by hand")
-            continue
-        source = HARDCODED.sub(REPLACEMENT, source)
-        if not re.search(r"^import os$", source, re.M):
-            source = "import os\n" + source
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(source)
-        patched += 1
-        print(f"[ok] patched {count} occurrence(s) in {relative}")
+        seen += 1
+        if patch_dataset(path) == "miss":
+            misses += 1
 
-    if not patched and not already:
+    if not seen or misses == seen:
         print("[error] nothing patched - the demo dataset reference is still in place", file=sys.stderr)
         print("[error] training would silently run on the Norod78 yarn-art demo dataset", file=sys.stderr)
         return 1
-    print(f"[done] {patched} patched, {already} already patched")
+
+    embeddings = os.path.join(args.repo, EMBEDDINGS)
+    if os.path.exists(embeddings):
+        patch_8bit(embeddings)
+
     print("[done] set ARCHFORGE_DATASET to your dataset path before running")
     return 0
 
