@@ -2,9 +2,10 @@
 
 Base-model vs LoRA comparison for Mamluk / Islamic Cairo architectural style adaptation.
 
-> **Status:** dataset, training configuration and methodology are complete and verified.
-> The comparison sections (§4–§6) are filled in after the Colab training run.
-> Anything marked `TODO` is genuinely not yet measured — do not present it as a result.
+> **Status:** complete. Dataset, training and the base-vs-LoRA comparison all ran to
+> completion; §4 and §5 report what was observed, including the failure cases.
+> §5.5 records a methodological weakness in how the adapter was trained — it is stated
+> rather than corrected, and should be read before any quantitative claim is made.
 
 ---
 
@@ -97,8 +98,8 @@ images at distance ≥ 16.
 | Gradient checkpointing | enabled |
 | Text embeddings | pre-cached, T5 unloaded before training |
 | Hardware | Colab free tier, Tesla T4, 16GB |
-| Steps | `TODO` |
-| Wall clock | `TODO` |
+| Steps | 400 |
+| Wall clock | ≈2 h 04 m (≈18.6 s/step, checkpoint writes included) |
 
 ### Configuration constraints, and why
 
@@ -135,12 +136,12 @@ runs. Only the adapter differs — that is what makes it controlled.
 
 | # | Prompt | Observation |
 |---|---|---|
-| 1 | A historic Islamic courtyard in Cairo, architectural photography | `TODO` |
-| 2 | A Mamluk stone facade in historic Cairo | `TODO` |
-| 3 | An Islamic interior with traditional architectural ornamentation | `TODO` |
-| 4 | A historic Egyptian doorway | `TODO` |
-| 5 | A traditional Cairo architectural street scene | `TODO` |
-| 6 | A domed structure in historic Islamic Cairo | `TODO` |
+| 1 | A historic Islamic courtyard in Cairo, architectural photography | Base gives a symmetrical arcaded courtyard around a central fountain — clean but generic. LoRA adds a slender Cairene minaret, denser carved stone and warmer limestone, but the arcade and the minaret rise on conflicting axes, and the balustraded stair at right is foreign to the vocabulary. |
+| 2 | A Mamluk stone facade in historic Cairo | Base returns a single monumental pointed-arch portal, clean and period-ambiguous. LoRA reads much closer to a real Cairene funerary complex — domes, a tower, visitors in modern dress — but answers "facade" with a wide complex view, so adherence drops. Crowd figures are unresolved mush. |
+| 3 | An Islamic interior with traditional architectural ornamentation | Base is a legible hypostyle hall: coffered ceiling, columns, arcade, tiled floor. LoRA turns it into a curved domed interior with marble revetment and a clerestory. The motifs are more plausibly Mamluk, but the geometry does not close — the columns share no ground plane and the floor merges into the wall. Clearest hallucination in the set. |
+| 4 | A historic Egyptian doorway | Both produce a carved stone doorway with relief jambs, so adherence holds. LoRA is more weathered and more intricately carved, but the ornament has no structure — the relief on the right jamb is undifferentiated texture rather than a repeated motif. |
+| 5 | A traditional Cairo architectural street scene | Base holds a readable street: receding perspective, mashrabiya windows, a distant minaret. LoRA flattens it into frontally stacked balconies and planting, with weak depth and an unresolved pale mass at right. Reads as a facade collage rather than a street. |
+| 6 | A domed structure in historic Islamic Cairo | Strongest LoRA result. Base gives a plain cubic qubba with one dome. LoRA produces a ribbed dome with chevron surface articulation — a genuine Mamluk motif, cf. Qalawun and Barsbay — a second dome behind it, and richer carved stone. A distorted arch at bottom centre fails to resolve. |
 
 Evaluated on five axes: **style fidelity** (does the Mamluk vocabulary appear),
 **structural plausibility** (arches, domes, muqarnas, proportions), **style bleeding**
@@ -155,25 +156,59 @@ Evaluated on five axes: **style fidelity** (does the Mamluk vocabulary appear),
 - The rejection pipeline: 123 candidates reviewed down to 39, every rejection with a
   recorded reason, wrong-country contamination caught in categories that are indexed
   by vocabulary rather than geography.
-- `TODO` — training convergence and style fidelity, once measured.
+- Training converged, and the adapter bound the style. The LoRA shifts every prompt
+  toward Cairene limestone with a denser carved surface, and introduces vocabulary the
+  base model does not produce: ribbed domes (prompt 6), a slender Cairene minaret
+  (prompt 1), Mamluk funerary massing (prompt 2). This is the result the run was for.
+- No Western style bleeding. Nothing in the six LoRA outputs reads as Gothic, Victorian,
+  Scandinavian or modern minimalist — the failure mode the caption vocabulary was
+  designed to prevent did not occur.
 
 ### Did not work — honest failure cases
 
 > This section must contain at least one real failure. A report with no failures from
 > a 39-image, few-hundred-step run is not credible. Record what actually happened.
 
-`TODO` — candidates to look for specifically:
+**1. Structural coherence degrades as style fidelity rises.** Prompts 3 and 5 are the
+clearest cases. Prompt 3 becomes a domed interior whose columns share no ground plane
+and whose floor merges into the wall; prompt 5 collapses a street into a frontal
+collage. The adapter appears to have learned surface and massing before geometry.
 
-- **Style bleeding.** With only 39 images and a low rank, the adapter may learn a
-  colour cast or lighting signature rather than architecture. If the LoRA outputs are
-  uniformly warm/sepia across all six prompts, that is bleeding, not style fidelity.
-- **Overfitting.** A rank-8 adapter on 39 images can memorise specific monuments and
-  reproduce them under unrelated prompts.
-- **Tokenizer interaction.** The `mamluk_architecture` trigger token is a rare token
-  pair; if style transfer is weak, the token may not have bound to the visual concept
-  at this step count. Testable by running the LoRA *without* the trigger token.
+**2. Prompt adherence drops on two of six prompts.** Prompt 2 asks for a facade and
+returns a wide complex view; prompt 5 asks for a street and returns a facade. In both,
+memorised Mamluk massing appears to have overridden the prompt.
 
-`TODO` — record the specific failures observed, with the prompt that produced them.
+**3. Detail below the motif scale is mush.** Prompt 4's doorway keeps its framing, but
+the relief carving is undifferentiated texture — the adapter reproduces the *presence*
+of ornament without its repetition structure.
+
+**4. The predicted colour-cast failure partly materialised.** Four of six prompts
+(1, 2, 4, 6) shift warmer and more saturated than base, which is the bleeding signature
+this section anticipated. Prompts 3 and 5 shift cooler and paler, so it is not a global
+cast applied regardless of content. Warm is the default the adapter reaches for, not a
+filter it always applies.
+
+**5. The evaluation is not on held-out images.** `metadata.csv` marks 33 images train
+and 6 validation, and §2 reports that split. The LoRA was trained on all 39: the
+embedding pass reads the published dataset as a single split, so
+`compute_embeddings.py` returned 39 rows and training consumed all of them. The six
+validation images were therefore seen during training. Because the comparison is driven
+by six text prompts rather than by those images, this is style exposure rather than
+image memorisation, and no claim above rests on held-out data — but the split stated in
+§2 is not reflected in how the adapter was trained, and a quantitative evaluation would
+need it respected.
+
+**6. Infrastructure cost dominated model cost.** Most of the wall clock went to
+environment failure, not training. `enable_model_cpu_offload()` hangs on a
+bitsandbytes-quantized pipeline on this hardware and had to be inverted to opt-in; the
+diffusers research scripts target transformers 4.x and broke twice against
+transformers 5 (first `load_in_8bit` as a `from_pretrained` kwarg, then bfloat16
+embeddings reaching `numpy`); and `diffusers` >=0.40 requires `huggingface_hub` >=1.23,
+which Colab does not ship. Training itself was the least eventful part of the run.
+
+**Not tested.** Whether the `mamluk_architecture` trigger token bound to the visual
+concept was not isolated. Doing so needs a run with the trigger token removed from the
+prompts, which the time box did not allow.
 
 ## 6. What a longer run would fix
 
