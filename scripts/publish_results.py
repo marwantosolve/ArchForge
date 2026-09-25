@@ -151,20 +151,33 @@ def main():
     parser.add_argument("--results-repo", default="")
     parser.add_argument("--dataset-repo", default="")
     parser.add_argument("--repo-url", default="https://github.com/marwantosolve/ArchForge")
+    parser.add_argument(
+        "--train-steps",
+        type=int,
+        default=400,
+        help="training steps for the LoRA card. The generation manifests only carry "
+        "inference steps, so this cannot be read from them.",
+    )
     parser.add_argument("--out", default="data")
     parser.add_argument("--push", action="store_true")
     args = parser.parse_args()
 
     manifest = read_manifest(args.comparison) or read_manifest(args.baseline)
     first = manifest[0] if manifest else {}
-    steps = first.get("steps", "UNKNOWN")
+    steps = args.train_steps
     resolution = first.get("width", 512)
 
     prompts = []
     if os.path.exists(args.prompts):
         with open(args.prompts, encoding="utf-8") as handle:
-            prompts = json.load(handle)
-    prompt_list = "\n".join(f"{i}. {p.get('prompt', p)}" for i, p in enumerate(prompts, 1)) or "—"
+            prompts = json.load(handle).get("prompts", [])
+    prompt_list = (
+        "\n".join(
+            f"{i}. {p.get('prompt', '') if isinstance(p, dict) else p}"
+            for i, p in enumerate(prompts, 1)
+        )
+        or "—"
+    )
 
     count = 39
     if os.path.exists("metadata.csv"):
